@@ -4,6 +4,10 @@ import jakarta.inject.Inject;
 import javax.sql.DataSource;
 
 import org.acme.models.Producto;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Fallback;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -15,9 +19,16 @@ public class ProductoRepository {
     @Inject
     DataSource dataSource;
 
-    
+    @Retry(maxRetries = 3, delay = 500)
+    @Timeout(2000)
+    @CircuitBreaker(requestVolumeThreshold = 4, failureRatio = 0.5, delay = 5000)
+    @Fallback(fallbackMethod = "unFallbackFindByName")
     public Optional<Producto> findByName(String nombre) throws Exception {
 
+        // Simula fallo si se pide un nombre que empieza por "error"
+        if (nombre.startsWith("error")) {
+            throw new RuntimeException("Fallo simulado en la base de datos");
+        }
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                  "SELECT id, nombre, precio FROM products WHERE nombre = ?")) {
@@ -34,5 +45,8 @@ public class ProductoRepository {
             }
         }
     }
-
+    // Este es el Fallback: devuelve un producto por defecto cuando todo falla
+    public Optional<Producto> unFallbackFindByName(String nombre) {
+        return Optional.of(new Producto(-1L, "Producto no disponible", 0.0));
+    }
 }
